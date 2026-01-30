@@ -2,158 +2,189 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>TensorFlow.js Text Classification</title>
+<title>Text Classification – TensorFlow.js</title>
 
-<!-- TensorFlow.js -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0"></script>
 
 <style>
     body {
-        font-family: Arial, sans-serif;
-        max-width: 800px;
+        font-family: system-ui, sans-serif;
+        max-width: 900px;
         margin: 40px auto;
-        line-height: 1.6;
     }
 
     textarea {
         width: 100%;
+        padding: 12px;
         font-size: 16px;
-        padding: 10px;
     }
 
     button {
-        margin-top: 10px;
+        margin-top: 12px;
         padding: 10px 20px;
         font-size: 16px;
         cursor: pointer;
     }
 
-    .box {
-        background: #f4f4f4;
-        padding: 15px;
-        margin-top: 20px;
-        border-radius: 6px;
+    .status {
+        margin-top: 10px;
+        font-weight: bold;
     }
+
+    .box {
+        background: #f5f5f5;
+        padding: 16px;
+        margin-top: 20px;
+        border-radius: 8px;
+    }
+
+    .score {
+        font-size: 24px;
+        font-weight: bold;
+    }
+
+    .positive { color: #0a8a0a; }
+    .negative { color: #c00000; }
 
     .token {
         display: inline-block;
         margin: 4px;
         padding: 4px 8px;
-        background: #dfe3ff;
         border-radius: 4px;
         font-size: 14px;
     }
 
-    .score {
-        font-size: 22px;
-        font-weight: bold;
-    }
+    .known { background: #dbe8ff; }
+    .unknown { background: #ffdede; }
+    .padding { background: #e0e0e0; color: #555; }
 </style>
 </head>
 
 <body>
 
-<h2>Text Classification Demo (TensorFlow.js)</h2>
+<h1>Text Classification Demo</h1>
 
-<p>Enter an English sentence:</p>
+<p>Type an English sentence:</p>
 
-<textarea id="textInput" rows="4"
-    placeholder="Type an English sentence here..."></textarea>
+<textarea id="inputText" rows="4"
+          placeholder="Example: This movie was absolutely fantastic"></textarea>
 
 <br>
-<button onclick="runPrediction()">Analyze</button>
+<button onclick="predict()">Analyze</button>
+
+<div id="status" class="status">Loading model…</div>
 
 <div class="box">
-    <strong>Prediction probability:</strong>
-    <div id="probability" class="score">–</div>
+    <div>Prediction:</div>
+    <div id="label" class="score">–</div>
+    <div id="probability">–</div>
 </div>
 
 <div class="box">
-    <strong>Tokens from vocabulary (word → id):</strong>
-    <div id="tokens">–</div>
+    <strong>Tokens (word → id)</strong>
+    <div id="tokens"></div>
+</div>
+
+<div class="box">
+    <strong>Padding</strong>
+    <div id="padding"></div>
 </div>
 
 <script>
-let model;
-let wordIndex;
-
+let model, wordIndex;
 const MAX_LEN = 30;
+const THRESHOLD = 0.5;
 
-// Load model + tokenizer
-async function loadResources() {
-    model = await tf.loadLayersModel("model/model.json");
-
-    const response = await fetch("tokenizer.json");
-    wordIndex = await response.json();
-
-    console.log("Model and tokenizer loaded");
+// ---------------- LOAD ----------------
+async function loadAll() {
+    try {
+        model = await tf.loadLayersModel("model/model.json");
+        const res = await fetch("tokenizer.json");
+        wordIndex = await res.json();
+        document.getElementById("status").innerText = "Model loaded ✓";
+    } catch (err) {
+        document.getElementById("status").innerText = "Failed to load resources";
+        console.error(err);
+    }
 }
 
-// Preprocess text → tokens + padded sequence
+// ---------------- PREPROCESS ----------------
 function preprocess(text) {
     const words = text
         .toLowerCase()
         .replace(/[^a-z\s]/g, "")
         .split(/\s+/)
-        .filter(w => w.length > 0);
+        .filter(Boolean);
 
-    const tokens = words.map(word => ({
-        word: word,
-        id: wordIndex[word] || 0
+    const tokens = words.map(w => ({
+        word: w,
+        id: wordIndex[w] ?? 0
     }));
 
     let sequence = tokens.map(t => t.id);
 
-    // Truncate
     if (sequence.length > MAX_LEN) {
         sequence = sequence.slice(0, MAX_LEN);
     }
 
-    // Pad
-    while (sequence.length < MAX_LEN) {
-        sequence.push(0);
-    }
+    const paddingCount = MAX_LEN - sequence.length;
+    sequence = sequence.concat(Array(paddingCount).fill(0));
 
-    return { tokens, sequence };
+    return { tokens, sequence, paddingCount };
 }
 
-// Run prediction
-async function runPrediction() {
-    const text = document.getElementById("textInput").value;
+// ---------------- UI HELPERS ----------------
+function renderTokens(tokens) {
+    const div = document.getElementById("tokens");
+    div.innerHTML = "";
 
-    if (!text.trim()) {
-        alert("Please enter some text.");
-        return;
-    }
-
-    const { tokens, sequence } = preprocess(text);
-
-    // Show tokens
-    const tokenDiv = document.getElementById("tokens");
-    tokenDiv.innerHTML = "";
     tokens.forEach(t => {
         const span = document.createElement("span");
-        span.className = "token";
+        span.className = `token ${t.id === 0 ? "unknown" : "known"}`;
         span.textContent = `${t.word} → ${t.id}`;
-        tokenDiv.appendChild(span);
+        div.appendChild(span);
     });
-
-    // Tensor
-    const inputTensor = tf.tensor2d([sequence], [1, MAX_LEN], "int32");
-
-    const prediction = model.predict(inputTensor);
-    const score = (await prediction.data())[0];
-
-    document.getElementById("probability").innerText =
-        `${(score * 100).toFixed(2)} %`;
-
-    tf.dispose([inputTensor, prediction]);
 }
 
-// Init
-loadResources();
+function renderPadding(count) {
+    const div = document.getElementById("padding");
+    div.innerHTML = "";
+    for (let i = 0; i < count; i++) {
+        const span = document.createElement("span");
+        span.className = "token padding";
+        span.textContent = "0";
+        div.appendChild(span);
+    }
+}
+
+// ---------------- PREDICT ----------------
+async function predict() {
+    const text = document.getElementById("inputText").value.trim();
+    if (!text) return alert("Enter some text.");
+
+    const { tokens, sequence, paddingCount } = preprocess(text);
+
+    renderTokens(tokens);
+    renderPadding(paddingCount);
+
+    const score = tf.tidy(() => {
+        const input = tf.tensor2d([sequence], [1, MAX_LEN], "int32");
+        return model.predict(input).dataSync()[0];
+    });
+
+    const label = score >= THRESHOLD ? "POSITIVE" : "NEGATIVE";
+
+    const labelDiv = document.getElementById("label");
+    labelDiv.textContent = label;
+    labelDiv.className = `score ${label === "POSITIVE" ? "positive" : "negative"}`;
+
+    document.getElementById("probability").innerText =
+        `Probability: ${(score * 100).toFixed(2)} %`;
+}
+
+// init
+loadAll();
 </script>
 
 </body>
 </html>
-

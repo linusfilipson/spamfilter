@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>TensorFlow.js Text Classification</title>
+
+<!-- TensorFlow.js -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0"></script>
+
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 40px auto;
+        line-height: 1.6;
+    }
+
+    textarea {
+        width: 100%;
+        font-size: 16px;
+        padding: 10px;
+    }
+
+    button {
+        margin-top: 10px;
+        padding: 10px 20px;
+        font-size: 16px;
+        cursor: pointer;
+    }
+
+    .box {
+        background: #f4f4f4;
+        padding: 15px;
+        margin-top: 20px;
+        border-radius: 6px;
+    }
+
+    .token {
+        display: inline-block;
+        margin: 4px;
+        padding: 4px 8px;
+        background: #dfe3ff;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+
+    .score {
+        font-size: 22px;
+        font-weight: bold;
+    }
+</style>
+</head>
+
+<body>
+
+<h2>Text Classification Demo (TensorFlow.js)</h2>
+
+<p>Enter an English sentence:</p>
+
+<textarea id="textInput" rows="4"
+    placeholder="Type an English sentence here..."></textarea>
+
+<br>
+<button onclick="runPrediction()">Analyze</button>
+
+<div class="box">
+    <strong>Prediction probability:</strong>
+    <div id="probability" class="score">–</div>
+</div>
+
+<div class="box">
+    <strong>Tokens from vocabulary (word → id):</strong>
+    <div id="tokens">–</div>
+</div>
+
+<script>
+let model;
+let wordIndex;
+
+const MAX_LEN = 30;
+
+// Load model + tokenizer
+async function loadResources() {
+    model = await tf.loadLayersModel("model/model.json");
+
+    const response = await fetch("tokenizer.json");
+    wordIndex = await response.json();
+
+    console.log("Model and tokenizer loaded");
+}
+
+// Preprocess text → tokens + padded sequence
+function preprocess(text) {
+    const words = text
+        .toLowerCase()
+        .replace(/[^a-z\s]/g, "")
+        .split(/\s+/)
+        .filter(w => w.length > 0);
+
+    const tokens = words.map(word => ({
+        word: word,
+        id: wordIndex[word] || 0
+    }));
+
+    let sequence = tokens.map(t => t.id);
+
+    // Truncate
+    if (sequence.length > MAX_LEN) {
+        sequence = sequence.slice(0, MAX_LEN);
+    }
+
+    // Pad
+    while (sequence.length < MAX_LEN) {
+        sequence.push(0);
+    }
+
+    return { tokens, sequence };
+}
+
+// Run prediction
+async function runPrediction() {
+    const text = document.getElementById("textInput").value;
+
+    if (!text.trim()) {
+        alert("Please enter some text.");
+        return;
+    }
+
+    const { tokens, sequence } = preprocess(text);
+
+    // Show tokens
+    const tokenDiv = document.getElementById("tokens");
+    tokenDiv.innerHTML = "";
+    tokens.forEach(t => {
+        const span = document.createElement("span");
+        span.className = "token";
+        span.textContent = `${t.word} → ${t.id}`;
+        tokenDiv.appendChild(span);
+    });
+
+    // Tensor
+    const inputTensor = tf.tensor2d([sequence], [1, MAX_LEN], "int32");
+
+    const prediction = model.predict(inputTensor);
+    const score = (await prediction.data())[0];
+
+    document.getElementById("probability").innerText =
+        `${(score * 100).toFixed(2)} %`;
+
+    tf.dispose([inputTensor, prediction]);
+}
+
+// Init
+loadResources();
+</script>
+
+</body>
+</html>
+

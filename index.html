@@ -1,105 +1,198 @@
-<!DOCTYPE html>
-<html lang="en">
+!DOCTYPE html>
+<html lang="sv">
 <head>
-<meta charset="UTF-8" />
-<title>Linus – TensorFlow.js Text Classifier</title>
- 
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0"></script>
- 
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      max-width: 700px;
-      margin: 40px auto;
-    }
-    textarea {
-      width: 100%;
-      height: 100px;
-      font-size: 16px;
-    }
-    button {
-      margin-top: 10px;
-      padding: 10px 20px;
-      font-size: 16px;
-    }
-    #result, #tokens {
-      margin-top: 20px;
-    }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Text Analyzer – Linus Edition</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0"></script>
+    
+    <style>
+        :root {
+            --primary: #6366f1;
+            --bg: #0f172a;
+            --card: #1e293b;
+            --text: #f8fafc;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            background: var(--card);
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+            width: 90%;
+            max-width: 500px;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+            text-align: center;
+            color: var(--primary);
+        }
+
+        textarea {
+            width: 100%;
+            height: 120px;
+            background: #334155;
+            border: 2px solid #475569;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            color: white;
+            font-size: 1rem;
+            resize: none;
+            box-sizing: border-box;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        textarea:focus {
+            border-color: var(--primary);
+        }
+
+        button {
+            width: 100%;
+            margin-top: 1rem;
+            padding: 0.75rem;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        .result-box {
+            margin-top: 2rem;
+            padding: 1rem;
+            background: #334155;
+            border-radius: 0.5rem;
+            display: none;
+        }
+
+        .prob-bar-bg {
+            background: #1e293b;
+            height: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+
+        .prob-bar-fill {
+            background: var(--primary);
+            height: 100%;
+            border-radius: 5px;
+            width: 0%;
+            transition: width 0.8s ease-out;
+        }
+
+        .token-tag {
+            display: inline-block;
+            background: #475569;
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin: 2px;
+            font-size: 0.8rem;
+        }
+    </style>
 </head>
- 
 <body>
- 
-<h1>Text Classification Demo – Linus</h1>
- 
-<textarea id="textInput" placeholder="Write an English sentence..."></textarea>
-<br>
-<button onclick="predict()">Analyze</button>
- 
-<div id="result"></div>
-<div id="tokens"></div>
- 
+
+<div class="container">
+    <h1>Text Analyzer</h1>
+    
+    <textarea id="textInput" placeholder="Skriv en mening här..."></textarea>
+    <button onclick="predict()">Analysera Text</button>
+    
+    <div id="result" class="result-box">
+        <div style="display: flex; justify-content: space-between;">
+            <span id="labelResult" style="font-weight: bold; font-size: 1.2rem;">-</span>
+            <span id="percentResult">0%</span>
+        </div>
+        <div class="prob-bar-bg">
+            <div id="probBar" class="prob-bar-fill"></div>
+        </div>
+        
+        <div id="tokenOutput" style="margin-top: 1rem; border-top: 1px solid #475569; padding-top: 0.5rem;">
+            </div>
+    </div>
+</div>
+
 <script>
-let model;
-let wordIndex;
-const MAX_LEN = 30; // MÅSTE matcha modellen
- 
-async function loadAll() {
-  model = await tf.loadLayersModel("tfjs_model/model.json");
- 
-  const metadata = await fetch("tfjs_model/metadata.json").then(r => r.json());
-  wordIndex = metadata.word_index || metadata.wordIndex;
- 
-  console.log("Model & metadata loaded");
-}
- 
-loadAll();
- 
-function tokenize(text) {
-  const words = text
-    .toLowerCase()
-    .replace(/[^a-z\s]/g, "")
-    .split(/\s+/)
-    .filter(w => w.length > 0);
- 
-  const tokens = words.map(w => wordIndex[w] || 0);
- 
-  // padding / truncation
-  while (tokens.length < MAX_LEN) tokens.push(0);
-  tokens.length = MAX_LEN;
- 
-  return { words, tokens };
-}
- 
-async function predict() {
-  const text = document.getElementById("textInput").value;
-  if (!text) return;
- 
-  const { words, tokens } = tokenize(text);
- 
-  const inputTensor = tf.tensor2d([tokens], [1, MAX_LEN], "int32");
-  const output = model.predict(inputTensor);
-  const prob = (await output.data())[0];
- 
-  const percent = (prob * 100).toFixed(2);
-  const label = prob >= 0.5 ? "Positive" : "Negative";
- 
-  document.getElementById("result").innerHTML = `
-<h2>Result</h2>
-<p><b>Prediction:</b> ${label}</p>
-<p><b>Probability:</b> ${percent}%</p>
-  `;
- 
-  document.getElementById("tokens").innerHTML = `
-<h2>Tokens</h2>
-<ul>
-      ${words.map((w, i) => `<li>${w} → ${tokens[i]}</li>`).join("")}
-</ul>
-  `;
- 
-  tf.dispose([inputTensor, output]);
-}
+    let model;
+    let wordIndex;
+    const MAX_LEN = 20; // Uppdaterad till 20 för att matcha din model.json
+
+    async function loadAll() {
+        try {
+            model = await tf.loadLayersModel("tfjs_model/model.json");
+            const metadata = await fetch("tfjs_model/metadata.json").then(r => r.json());
+            wordIndex = metadata.word_index;
+            console.log("System redo!");
+        } catch (e) {
+            console.error("Kunde inte ladda modell:", e);
+        }
+    }
+
+    loadAll();
+
+    function tokenize(text) {
+        const words = text.toLowerCase().replace(/[^\w\s]/g, "").split(/\s+/).filter(w => w.length > 0);
+        // Använder ID 1 (<OOV>) om ordet inte finns
+        const tokens = words.map(w => wordIndex[w] || 1);
+
+        const paddedTokens = new Array(MAX_LEN).fill(0);
+        for (let i = 0; i < Math.min(tokens.length, MAX_LEN); i++) {
+            paddedTokens[i] = tokens[i];
+        }
+
+        return { words, tokens: paddedTokens };
+    }
+
+    async function predict() {
+        const text = document.getElementById("textInput").value;
+        if (!text || !model) return;
+
+        const { words, tokens } = tokenize(text);
+        const inputTensor = tf.tensor2d([tokens], [1, MAX_LEN]);
+        
+        const output = model.predict(inputTensor);
+        const data = await output.data();
+        
+        // Din modell har 3 outputs (t.ex. Neg, Neu, Pos)
+        // Vi hittar indexet med högst värde
+        const maxIndex = data.indexOf(Math.max(...data));
+        const labels = ["Negativ", "Neutral", "Positiv"];
+        const prob = data[maxIndex];
+
+        // Uppdatera UI
+        document.getElementById("result").style.display = "block";
+        document.getElementById("labelResult").innerText = labels[maxIndex];
+        document.getElementById("percentResult").innerText = (prob * 100).toFixed(1) + "%";
+        document.getElementById("probBar").style.width = (prob * 100) + "%";
+        
+        document.getElementById("tokenOutput").innerHTML = words
+            .map((w, i) => `<span class="token-tag">${w} (${tokens[i]})</span>`)
+            .join("");
+
+        tf.dispose([inputTensor, output]);
+    }
 </script>
- 
+
 </body>
 </html>

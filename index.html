@@ -3,26 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Debug Mode - Linus</title>
+    <title>AI Spam Check - Linus</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0"></script>
     <style>
         body { font-family: sans-serif; background: #121212; color: white; display: flex; justify-content: center; padding: 20px; }
-        .card { background: #1e1e1e; padding: 20px; border-radius: 10px; width: 100%; max-width: 500px; border: 1px solid #333; }
-        textarea { width: 100%; height: 80px; margin: 10px 0; padding: 10px; box-sizing: border-box; background: #222; color: #fff; border: 1px solid #444; }
-        button { width: 100%; padding: 15px; background: #6366f1; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
-        #status { font-size: 0.8rem; margin-bottom: 10px; padding: 10px; border-radius: 5px; background: #2c2c2c; }
+        .card { background: #1e1e1e; padding: 25px; border-radius: 12px; width: 100%; max-width: 500px; border: 1px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        h2 { color: #6366f1; margin-top: 0; }
+        textarea { width: 100%; height: 100px; margin: 15px 0; padding: 12px; box-sizing: border-box; background: #262626; color: #fff; border: 1px solid #444; border-radius: 8px; font-size: 16px; outline: none; }
+        textarea:focus { border-color: #6366f1; }
+        button { width: 100%; padding: 15px; background: #6366f1; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 16px; }
+        button:active { transform: scale(0.98); }
+        #status { font-size: 0.85rem; margin-bottom: 15px; padding: 12px; border-radius: 8px; background: #2c2c2c; font-family: monospace; }
         .error { color: #ff6b6b; border: 1px solid #ff6b6b; }
         .success { color: #51cf66; border: 1px solid #51cf66; }
+        #debugOutput { margin-top: 20px; padding: 15px; background: #1a1a1a; border-radius: 8px; border-left: 4px solid #6366f1; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2>Spam Checker (Debug)</h2>
-    <div id="status">Förbereder...</div>
-    <textarea id="textInput" placeholder="Skriv här..."></textarea>
-    <button id="predictBtn" onclick="predict()">ANALYSERA NU</button>
-    <div id="debugOutput" style="margin-top:20px; font-family:monospace; font-size:12px; color:#aaa;"></div>
+    <h2>Spam Checker AI</h2>
+    <div id="status">Väntar på systemet...</div>
+    <textarea id="textInput" placeholder="Skriv din engelska mening här..."></textarea>
+    <button id="predictBtn" onclick="predict()">ANALYSERA TEXT</button>
+    <div id="debugOutput">Resultatet visas här efter analys.</div>
 </div>
 
 <script>
@@ -32,28 +36,37 @@
     async function init() {
         const status = document.getElementById('status');
         try {
-            status.innerHTML = "Försöker ladda filer från /tfjs_model...";
+            status.innerHTML = "⏳ Laddar modell från /tfjs_model...";
             
-            // Vi laddar modell och metadata
+            // Försök ladda modell.json
             model = await tf.loadLayersModel('tfjs_model/model.json');
-            const meta = await fetch('tfjs_model/metadata.json').then(r => r.json());
+            
+            // Försök ladda metadata.json
+            const response = await fetch('tfjs_model/metadata.json');
+            if (!response.ok) throw new Error("Kunde inte hitta metadata.json");
+            
+            const meta = await response.json();
             wordIndex = meta.word_index;
 
-            status.innerHTML = "✅ ALLT OK! Modellen hittades.";
+            status.innerHTML = "✅ SYSTEMET ÄR REDO!";
             status.className = "success";
         } catch (e) {
-            status.innerHTML = "❌ SYSTEMFEL: Filerna hittas inte i mappen 'tfjs_model'.";
+            status.innerHTML = "❌ FEL: Kontrollera mappen 'tfjs_model'";
             status.className = "error";
-            document.getElementById('debugOutput').innerHTML = "Felmeddelande: " + e.message;
+            document.getElementById('debugOutput').innerHTML = "<strong>Tekniskt fel:</strong> " + e.message + 
+                "<br><br>Se till att du laddat upp mappen till GitHub korrekt.";
         }
     }
 
     function tokenize(text) {
         if (!wordIndex) return new Array(MAX_LEN).fill(0);
-        const words = text.toLowerCase().replace(/[^\w\s]/g, "").split(/\s+/);
-        const tokens = words.map(w => wordIndex[w] || 1);
+        // Rensa texten på samma sätt som vid träning
+        const words = text.toLowerCase().replace(/[^\w\s]/g, "").split(/\s+/).filter(x => x);
+        const tokens = words.map(w => wordIndex[w] || 1); // 1 = OOV
         const padded = new Array(MAX_LEN).fill(0);
-        for (let i = 0; i < Math.min(tokens.length, MAX_LEN); i++) padded[i] = tokens[i];
+        for (let i = 0; i < Math.min(tokens.length, MAX_LEN); i++) {
+            padded[i] = tokens[i];
+        }
         return padded;
     }
 
@@ -61,8 +74,13 @@
         const out = document.getElementById('debugOutput');
         const input = document.getElementById('textInput').value;
 
-        if (!model) {
-            out.innerHTML = "FELLOGG: Kan inte analysera eftersom modellen inte laddades. Kontrollera att mappen 'tfjs_model' ligger rätt på GitHub.";
+        if (!model || !wordIndex) {
+            alert("Modellen är inte laddad än. Vänta på grönt ljus!");
+            return;
+        }
+
+        if (!input.trim()) {
+            out.innerHTML = "Skriv in någon text först!";
             return;
         }
 
@@ -71,18 +89,21 @@
             const tensor = tf.tensor2d([tokens], [1, MAX_LEN]);
             const prediction = await model.predict(tensor).data();
             
-            const labels = ["Spam/Negativ", "Neutral", "Ham/Positiv"];
+            // Din modell har 3 outputs i sista lagret (dense_1)
+            const labels = ["Negativ/Spam", "Neutral", "Positiv/Ham"];
             const maxIdx = prediction.indexOf(Math.max(...prediction));
+            const confidence = (prediction[maxIdx] * 100).toFixed(1);
             
-            out.innerHTML = "<h3>RESULTAT: " + labels[maxIdx] + "</h3>" + 
-                            "Sannolikhet: " + (prediction[maxIdx]*100).toFixed(1) + "%";
+            out.innerHTML = `<h3 style="margin:0; color:#6366f1;">RESULTAT: ${labels[maxIdx]}</h3>` + 
+                            `<p style="margin:10px 0 0 0;">Sannolikhet: <strong>${confidence}%</strong></p>`;
             
             tf.dispose(tensor);
         } catch (e) {
-            out.innerHTML = "LOGIKFEL: " + e.message;
+            out.innerHTML = "<span style='color:red'>LOGIKFEL:</span> " + e.message;
         }
     }
 
+    // Starta laddning när sidan öppnas
     window.onload = init;
 </script>
 </body>

@@ -1,3 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Text Classification – TensorFlow.js</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0"></script>
+
+<style>
+:root {
+    --bg: #0f172a;
+    --card: #111827;
+    --muted: #9ca3af;
+    --positive: #22c55e;
+    --negative: #ef4444;
+    --accent: #3b82f6;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: system-ui, sans-serif;
+    background: linear-gradient(180deg, #020617, #020617);
+    color: #e5e7eb;
+}
+
+.container {
+    max-width: 900px;
+    margin: 40px auto;
+    padding: 20px;
+}
+
+h1 {
+    font-size: 32px;
+    margin-bottom: 10px;
+}
+
+p {
+    color: var(--muted);
+}
+
+.card {
+    background: var(--card);
+    border-radius: 14px;
+    padding: 20px;
+    margin-top: 20px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.4);
+}
+
+textarea {
+    width: 100%;
+    background: #020617;
+    color: #e5e7eb;
+    border: 1px solid #1f2933;
+    border-radius: 10px;
+    padding: 14px;
+    font-size: 16px;
+    resize: vertical;
+}
+
+button {
+    margin-top: 14px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 12px 24px;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+button:hover {
+    filter: brightness(1.1);
+}
+
+.status {
+    margin-top: 12px;
+    font-weight: 600;
+    color: var(--muted);
+}
+
+.result {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.positive { color: var(--positive); }
+.negative { color: var(--negative); }
+
+.bar {
+    height: 10px;
+    border-radius: 10px;
+    background: #1f2937;
+    overflow: hidden;
+}
+
+.bar-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    transition: width .3s ease;
+}
+
+.tokens {
+    margin-top: 10px;
+}
+
+.token {
+    display: inline-block;
+    margin: 4px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+.known { background: #1e40af; }
+.unknown { background: #7c2d12; }
+.padding { background: #374151; color: #9ca3af; }
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>Text Classification</h1>
+<p>TensorFlow.js sentiment analysis demo</p>
+
+<div class="card">
+    <textarea id="inputText" rows="4"
+        placeholder="Example: This movie was absolutely fantastic"></textarea>
+
+    <button onclick="predict()">Analyze</button>
+    <div id="status" class="status">Loading model…</div>
+</div>
+
+<div class="card">
+    <div id="label" class="result">–</div>
+    <div id="probability">–</div>
+
+    <div class="bar">
+        <div id="barFill" class="bar-fill"></div>
+    </div>
+</div>
+
+<div class="card">
+    <strong>Tokens</strong>
+    <div id="tokens" class="tokens"></div>
+</div>
+
+<div class="card">
+    <strong>Padding</strong>
+    <div id="padding" class="tokens"></div>
+</div>
+
+</div>
+
 <script>
 let model;
 let wordIndex;
@@ -7,25 +168,23 @@ const PAD_ID = 0;
 const OOV_ID = 1;
 const THRESHOLD = 0.5;
 
-// ---------------- LOAD ----------------
+// LOAD
 async function loadAll() {
     try {
         model = await tf.loadLayersModel("model/model.json");
 
         const res = await fetch("tokenizer.json");
         const tokenizer = await res.json();
-
-        // VIKTIGT: rätt nivå i json
         wordIndex = tokenizer.word_index;
 
         document.getElementById("status").innerText = "Model loaded ✓";
     } catch (err) {
-        document.getElementById("status").innerText = "Failed to load resources";
+        document.getElementById("status").innerText = "Failed to load model";
         console.error(err);
     }
 }
 
-// ---------------- PREPROCESS ----------------
+// PREPROCESS
 function preprocess(text) {
     const words = text
         .toLowerCase()
@@ -33,15 +192,13 @@ function preprocess(text) {
         .split(/\s+/)
         .filter(Boolean);
 
-    const tokens = words.map(word => {
-        const id = wordIndex[word] ?? OOV_ID;
-        return { word, id };
-    });
+    const tokens = words.map(word => ({
+        word,
+        id: wordIndex[word] ?? OOV_ID
+    }));
 
     let sequence = tokens.map(t => t.id);
 
-    // truncation (samma som Keras default: "pre" är vanligt,
-    // men här använder vi "post" eftersom du redan gör det)
     if (sequence.length > MAX_LEN) {
         sequence = sequence.slice(0, MAX_LEN);
     }
@@ -52,18 +209,14 @@ function preprocess(text) {
     return { tokens, sequence, paddingCount };
 }
 
-// ---------------- UI ----------------
+// UI
 function renderTokens(tokens) {
     const div = document.getElementById("tokens");
     div.innerHTML = "";
 
     tokens.forEach(t => {
         const span = document.createElement("span");
-        span.className = `token ${
-            t.id === PAD_ID ? "padding" :
-            t.id === OOV_ID ? "unknown" :
-            "known"
-        }`;
+        span.className = `token ${t.id === OOV_ID ? "unknown" : "known"}`;
         span.textContent = `${t.word} → ${t.id}`;
         div.appendChild(span);
     });
@@ -81,13 +234,10 @@ function renderPadding(count) {
     }
 }
 
-// ---------------- PREDICT ----------------
+// PREDICT
 async function predict() {
     const text = document.getElementById("inputText").value.trim();
-    if (!text) {
-        alert("Enter some text.");
-        return;
-    }
+    if (!text) return;
 
     const { tokens, sequence, paddingCount } = preprocess(text);
 
@@ -96,20 +246,25 @@ async function predict() {
 
     const score = tf.tidy(() => {
         const input = tf.tensor2d([sequence], [1, MAX_LEN], "int32");
-        const output = model.predict(input);
-        return output.dataSync()[0];
+        return model.predict(input).dataSync()[0];
     });
 
     const label = score >= THRESHOLD ? "POSITIVE" : "NEGATIVE";
 
-    const labelDiv = document.getElementById("label");
-    labelDiv.textContent = label;
-    labelDiv.className = `score ${label === "POSITIVE" ? "positive" : "negative"}`;
+    document.getElementById("label").textContent = label;
+    document.getElementById("label").className =
+        `result ${label === "POSITIVE" ? "positive" : "negative"}`;
 
     document.getElementById("probability").innerText =
         `Probability: ${(score * 100).toFixed(2)} %`;
+
+    document.getElementById("barFill").style.width =
+        `${(score * 100).toFixed(1)}%`;
 }
 
-// init
-loadAll();
+// INIT – VIKTIG FIX
+window.addEventListener("DOMContentLoaded", loadAll);
 </script>
+
+</body>
+</html>

@@ -3,28 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sentimentanalys - Expert Integration</title>
+    <title>Sentimentanalys - GitHub Version</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 850px; margin: 40px auto; padding: 20px; background-color: #f0f2f5; color: #333; }
+        body { font-family: 'Segoe UI', sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; background-color: #f0f2f5; }
         .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        h1 { color: #1a73e8; margin-top: 0; }
-        textarea { width: 100%; height: 120px; padding: 15px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; resize: vertical; box-sizing: border-box; }
-        textarea:focus { border-color: #1a73e8; outline: none; }
-        button { background: #1a73e8; color: white; padding: 12px 24px; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; margin-top: 15px; transition: background 0.2s; }
-        button:hover { background: #1557b0; }
+        h1 { color: #1a73e8; }
+        textarea { width: 100%; height: 100px; padding: 15px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; box-sizing: border-box; }
+        button { background: #1a73e8; color: white; padding: 12px 24px; border: none; border-radius: 6px; cursor: pointer; margin-top: 15px; font-weight: bold; }
         button:disabled { background: #ccc; cursor: not-allowed; }
-        
-        #status { font-size: 0.9em; margin-bottom: 10px; color: #666; font-weight: bold; }
-        #results { margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px; display: none; }
-        
-        .token-list { margin: 15px 0; display: flex; flex-wrap: wrap; gap: 8px; }
-        .token-badge { background: #e8f0fe; color: #1967d2; padding: 5px 12px; border-radius: 20px; font-size: 14px; border: 1px solid #d2e3fc; }
-        
+        #status { font-size: 0.9em; margin-bottom: 10px; font-weight: bold; }
+        #results { margin-top: 30px; display: none; border-top: 1px solid #eee; padding-top: 20px; }
+        .token-badge { display: inline-block; background: #e8f0fe; color: #1967d2; padding: 5px 10px; border-radius: 15px; margin: 3px; font-size: 13px; }
         .prediction-row { margin-bottom: 15px; }
-        .label-text { display: flex; justify-content: space-between; margin-bottom: 5px; font-weight: bold; }
         .bar-container { background: #eee; height: 12px; border-radius: 6px; overflow: hidden; }
-        .bar-fill { height: 100%; background: #1a73e8; border-radius: 6px; transition: width 0.6s ease-out; }
+        .bar-fill { height: 100%; background: #1a73e8; transition: width 0.6s ease-out; }
     </style>
 </head>
 <body>
@@ -33,14 +26,14 @@
     <h1>Textanalysator</h1>
     <div id="status">Laddar AI-modell...</div>
     
-    <textarea id="textInput" placeholder="Skriv en mening här..."></textarea>
+    <textarea id="textInput" placeholder="Skriv något här (t.ex. 'Filmen var fantastisk')..."></textarea>
     <button id="analyzeBtn" disabled>Analysera Sentiment</button>
 
     <div id="results">
-        <h3>Modellens tolkning (Tokens)</h3>
-        <div id="tokenContainer" class="token-list"></div>
+        <h3>Tokens (Ordens ID i din ordlista)</h3>
+        <div id="tokenContainer"></div>
         
-        <h3>Sannolikhetsfördelning</h3>
+        <h3>Resultat</h3>
         <div id="predictionList"></div>
     </div>
 </div>
@@ -48,33 +41,31 @@
 <script>
     let model;
     let metadata;
-    const MAX_LENGTH = 20; // Baserat på din modells input_length
+    const MAX_LENGTH = 20;
+    // Eftersom din metadata.json saknar labels-fältet definierar vi dem här:
+    const LABELS = ["negativ", "neutral", "positiv"];
 
-    // 1. Initiera modellen och ordlistan
     async function initialize() {
         const statusEl = document.getElementById('status');
         const btn = document.getElementById('analyzeBtn');
         
         try {
-            // Laddar från din mapp tfjs_model
+            // Kontrollera att sökvägen stämmer med din mapp på GitHub
             model = await tf.loadLayersModel('tfjs_model/model.json');
-            
             const metaRes = await fetch('tfjs_model/metadata.json');
             metadata = await metaRes.json();
             
-            statusEl.innerText = "✅ Klar! Modellen och ordlistan är laddade.";
+            statusEl.innerText = "✅ Modellen är laddad och redo!";
             statusEl.style.color = "green";
-            btn.disabled = false; // Aktiverar knappen när allt är klart
+            btn.disabled = false;
         } catch (err) {
-            statusEl.innerText = "❌ Fel vid laddning: " + err.message;
+            statusEl.innerText = "❌ Fel: " + err.message;
             statusEl.style.color = "red";
-            console.error("Laddningsfel:", err);
+            console.error(err);
         }
     }
 
-    // 2. Textbehandling (Tokenisering + Padding)
     function processText(text) {
-        // Rensa texten och skapa ordlista
         const cleanText = text.toLowerCase().replace(/[^\w\s\u00C0-\u017F]/g, '');
         const words = cleanText.split(/\s+/).filter(w => w.length > 0);
         
@@ -82,13 +73,12 @@
         const tokenDisplay = [];
 
         words.forEach(word => {
-            // Använd ord-ID från metadata eller OOV-token (index 1)
-            const index = metadata.word_index[word] || metadata.word_index[metadata.oov_token];
+            // Vi hämtar ID från din ordlista. Finns ordet inte används <OOV> (ID 1).
+            const index = metadata.word_index[word] || 1; 
             sequence.push(index);
             tokenDisplay.push({word: word, id: index});
         });
 
-        // Skapa padding (fyll upp till 20 ord)
         const paddedSequence = new Array(MAX_LENGTH).fill(0);
         for (let i = 0; i < Math.min(sequence.length, MAX_LENGTH); i++) {
             paddedSequence[i] = sequence[i];
@@ -100,50 +90,33 @@
         };
     }
 
-    // 3. Huvudfunktion för analys
     async function runInference() {
         const text = document.getElementById('textInput').value;
         if (!text.trim()) return;
 
         const { inputTensor, display } = processText(text);
         
-        // Visa tokens
-        const tokenContainer = document.getElementById('tokenContainer');
-        tokenContainer.innerHTML = display.map(t => 
+        document.getElementById('tokenContainer').innerHTML = display.map(t => 
             `<span class="token-badge">${t.word} (ID: ${t.id})</span>`
         ).join('');
 
-        // Kör prediktion genom modellen
         const prediction = await model.predict(inputTensor).data();
-        renderPredictions(prediction);
-    }
-
-    // 4. Visa resultat grafiskt
-    function renderPredictions(probabilities) {
+        
         const resultsDiv = document.getElementById('results');
         const predList = document.getElementById('predictionList');
-        const labels = metadata.labels; // ["negativ", "neutral", "positiv"]
-
         resultsDiv.style.display = 'block';
         predList.innerHTML = '';
 
-        labels.forEach((label, i) => {
-            const percentage = (probabilities[i] * 100).toFixed(2);
+        LABELS.forEach((label, i) => {
+            const percentage = (prediction[i] * 100).toFixed(2);
             predList.innerHTML += `
                 <div class="prediction-row">
-                    <div class="label-text">
-                        <span>${label.toUpperCase()}</span>
-                        <span>${percentage}%</span>
-                    </div>
-                    <div class="bar-container">
-                        <div class="bar-fill" style="width: ${percentage}%"></div>
-                    </div>
-                </div>
-            `;
+                    <div><strong>${label.toUpperCase()}</strong>: ${percentage}%</div>
+                    <div class="bar-container"><div class="bar-fill" style="width: ${percentage}%"></div></div>
+                </div>`;
         });
     }
 
-    // Starta initiering
     document.getElementById('analyzeBtn').addEventListener('click', runInference);
     window.onload = initialize;
 </script>

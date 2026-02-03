@@ -170,19 +170,25 @@ const THRESHOLD = 0.5;
 
 // LOAD
 async function loadAll() {
-    try {
-        model = await tf.loadLayersModel("model/model.json");
+    const status = document.getElementById("status");
 
-        const res = await fetch("tokenizer.json");
+    try {
+        status.innerText = "Loading model…";
+
+        model = await tf.loadLayersModel("/spamfilter/model/model.json");
+
+        const res = await fetch("/spamfilter/tokenizer.json");
         const tokenizer = await res.json();
         wordIndex = tokenizer.word_index;
 
-        document.getElementById("status").innerText = "Model loaded ✓";
+        status.innerText = "Model loaded ✓";
     } catch (err) {
-        document.getElementById("status").innerText = "Failed to load model";
-        console.error(err);
+        status.innerText = "Model load failed ❌";
+        console.error("MODEL LOAD ERROR:", err);
+        alert(err.message);
     }
 }
+
 
 // PREPROCESS
 function preprocess(text) {

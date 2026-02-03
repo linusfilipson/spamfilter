@@ -1,219 +1,149 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="sv">
 <head>
-<meta charset="UTF-8">
-<title>Text Classification – TensorFlow.js</title>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0"></script>
-<style>
-:root {
-    --bg: #0f172a;
-    --card: #111827;
-    --muted: #9ca3af;
-    --positive: #22c55e;
-    --negative: #ef4444;
-    --accent: #3b82f6;
-}
-* {
-    box-sizing: border-box;
-}
-body {
-    margin: 0;
-    font-family: system-ui, sans-serif;
-    background: linear-gradient(180deg, #020617, #020617);
-    color: #e5e7eb;
-}
-.container {
-    max-width: 900px;
-    margin: 40px auto;
-    padding: 20px;
-}
-h1 {
-    font-size: 32px;
-    margin-bottom: 10px;
-}
-p {
-    color: var(--muted);
-}
-.card {
-    background: var(--card);
-    border-radius: 14px;
-    padding: 20px;
-    margin-top: 20px;
-    box-shadow: 0 10px 30px rgba(0,0,0,.4);
-}
-textarea {
-    width: 100%;
-    background: #020617;
-    color: #e5e7eb;
-    border: 1px solid #1f2933;
-    border-radius: 10px;
-    padding: 14px;
-    font-size: 16px;
-    resize: vertical;
-}
-button {
-    margin-top: 14px;
-    background: var(--accent);
-    color: white;
-    border: none;
-    border-radius: 10px;
-    padding: 12px 24px;
-    font-size: 16px;
-    cursor: pointer;
-}
-button:hover {
-    filter: brightness(1.1);
-}
-.status {
-    margin-top: 12px;
-    font-weight: 600;
-    color: var(--muted);
-}
-.result {
-    font-size: 28px;
-    font-weight: 700;
-    margin-bottom: 6px;
-}
-.positive { color: var(--positive); }
-.negative { color: var(--negative); }
-.bar {
-    height: 10px;
-    border-radius: 10px;
-    background: #1f2937;
-    overflow: hidden;
-}
-.bar-fill {
-    height: 100%;
-    width: 0%;
-    background: var(--accent);
-    transition: width .3s ease;
-}
-.tokens {
-    margin-top: 10px;
-}
-.token {
-    display: inline-block;
-    margin: 4px;
-    padding: 6px 10px;
-    border-radius: 6px;
-    font-size: 13px;
-}
-.known { background: #1e40af; }
-.unknown { background: #7c2d12; }
-.padding { background: #374151; color: #9ca3af; }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sentimentanalys - Expert Integration</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 850px; margin: 40px auto; padding: 20px; background-color: #f0f2f5; color: #333; }
+        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h1 { color: #1a73e8; margin-top: 0; }
+        textarea { width: 100%; height: 120px; padding: 15px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; resize: vertical; box-sizing: border-box; }
+        textarea:focus { border-color: #1a73e8; outline: none; }
+        button { background: #1a73e8; color: white; padding: 12px 24px; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; margin-top: 15px; transition: background 0.2s; }
+        button:hover { background: #1557b0; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        
+        #status { font-size: 0.9em; margin-bottom: 10px; color: #666; }
+        #results { margin-top: 30px; border-top: 1px solid #eee; pt: 20px; display: none; }
+        
+        .token-list { margin: 15px 0; display: flex; flex-wrap: wrap; gap: 8px; }
+        .token-badge { background: #e8f0fe; color: #1967d2; padding: 5px 12px; border-radius: 20px; font-size: 14px; border: 1px solid #d2e3fc; }
+        
+        .prediction-row { margin-bottom: 15px; }
+        .label-text { display: flex; justify-content: space-between; margin-bottom: 5px; font-weight: bold; }
+        .bar-container { background: #eee; height: 12px; border-radius: 6px; overflow: hidden; }
+        .bar-fill { height: 100%; background: #1a73e8; border-radius: 6px; transition: width 0.6s cubic-bezier(0.1, 0, 0.2, 1); }
+    </style>
 </head>
 <body>
-<div class="container">
-<h1>Text Classification</h1>
-<p>TensorFlow.js sentiment analysis demo</p>
+
 <div class="card">
-    <textarea id="inputText" rows="4"
-        placeholder="Example: This movie was absolutely fantastic"></textarea>
-    <button onclick="predict()">Analyze</button>
-    <div id="status" class="status">Loading model…</div>
-</div>
-<div class="card">
-    <div id="label" class="result">–</div>
-    <div id="probability">–</div>
-    <div class="bar">
-        <div id="barFill" class="bar-fill"></div>
+    <h1>Textanalysator</h1>
+    <div id="status">Laddar AI-modell...</div>
+    
+    <textarea id="textInput" placeholder="Skriv en mening här (t.ex. 'Filmen var helt fantastisk' eller engelska)..."></textarea>
+    <button id="analyzeBtn" disabled>Analysera Sentiment</button>
+
+    <div id="results">
+        <h3>Modellens tolkning (Tokens)</h3>
+        <div id="tokenContainer" class="token-list"></div>
+        
+        <h3>Sannolikhetsfördelning</h3>
+        <div id="predictionList"></div>
     </div>
 </div>
-<div class="card">
-    <strong>Tokens</strong>
-    <div id="tokens" class="tokens"></div>
-</div>
-<div class="card">
-    <strong>Padding</strong>
-    <div id="padding" class="tokens"></div>
-</div>
-</div>
+
 <script>
-let model;
-let wordIndex;
-const MAX_LEN = 30;
-const PAD_ID = 0;
-const OOV_ID = 1;
-const THRESHOLD = 0.5;
-// LOAD
-async function loadAll() {
-    const status = document.getElementById("status");
-    try {
-        status.innerText = "Loading model…";
-        model = await tf.loadLayersModel("/tfjs_model/model.json");
-        const res = await fetch("/tfjs_model/metadata.json");
-        const tokenizer = await res.json();
-        wordIndex = tokenizer.word_index;
-        status.innerText = "Model loaded ✓";
-    } catch (err) {
-        status.innerText = "Model load failed ❌";
-        console.error("MODEL LOAD ERROR:", err);
-        alert(err.message);
+    let model;
+    let metadata;
+    const MAX_LENGTH = 20; // Hämtat från metadata.json
+
+    // 1. Initiera modellen och ordlistan
+    async function initialize() {
+        const statusEl = document.getElementById('status');
+        try {
+            // Laddar från din specifika mapp
+            model = await tf.loadLayersModel('tfjs_model/model.json');
+            const metaRes = await fetch('tfjs_model/metadata.json');
+            metadata = await metaRes.json();
+            
+            statusEl.innerText = "✅ Modell och ordlista laddad från /tfjs_model";
+            statusEl.style.color = "green";
+            document.getElementById('analyzeBtn').disabled = false;
+        } catch (err) {
+            statusEl.innerText = "❌ Fel: Kunde inte ladda filerna. Kontrollera mappen 'tfjs_model'.";
+            statusEl.style.color = "red";
+            console.error(err);
+        }
     }
-}
-// PREPROCESS
-function preprocess(text) {
-    const words = text
-        .toLowerCase()
-        .replace(/[^a-z\s]/g, "")
-        .split(/\s+/)
-        .filter(Boolean);
-    const tokens = words.map(word => ({
-        word,
-        id: wordIndex[word] ?? OOV_ID
-    }));
-    let sequence = tokens.map(t => t.id);
-    if (sequence.length > MAX_LEN) {
-        sequence = sequence.slice(0, MAX_LEN);
+
+    // 2. Textbehandling (Tokenisering + Padding)
+    function processText(text) {
+        // Rensa texten på specialtecken och gör till små bokstäver
+        const cleanText = text.toLowerCase().replace(/[^\w\s\u00C0-\u017F]/g, '');
+        const words = cleanText.split(/\s+/).filter(w => w.length > 0);
+        
+        const sequence = [];
+        const tokenDisplay = [];
+
+        words.forEach(word => {
+            // Hitta ordets ID eller använd <OOV> (index 1)
+            const index = metadata.word_index[word] || metadata.word_index[metadata.oov_token];
+            sequence.push(index);
+            tokenDisplay.push({word: word, id: index});
+        });
+
+        // Skapa padding (fyll upp till 20 ord enligt modellens krav)
+        const paddedSequence = new Array(MAX_LENGTH).fill(0);
+        for (let i = 0; i < Math.min(sequence.length, MAX_LENGTH); i++) {
+            paddedSequence[i] = sequence[i];
+        }
+
+        return {
+            inputTensor: tf.tensor2d([paddedSequence], [1, MAX_LENGTH]),
+            display: tokenDisplay
+        };
     }
-    const paddingCount = MAX_LEN - sequence.length;
-    sequence = sequence.concat(Array(paddingCount).fill(PAD_ID));
-    return { tokens, sequence, paddingCount };
-}
-// UI
-function renderTokens(tokens) {
-    const div = document.getElementById("tokens");
-    div.innerHTML = "";
-    tokens.forEach(t => {
-        const span = document.createElement("span");
-        span.className = `token ${t.id === OOV_ID ? "unknown" : "known"}`;
-        span.textContent = `${t.word} → ${t.id}`;
-        div.appendChild(span);
-    });
-}
-function renderPadding(count) {
-    const div = document.getElementById("padding");
-    div.innerHTML = "";
-    for (let i = 0; i < count; i++) {
-        const span = document.createElement("span");
-        span.className = "token padding";
-        span.textContent = "0";
-        div.appendChild(span);
+
+    // 3. Huvudfunktion för analys
+    async function runInference() {
+        const text = document.getElementById('textInput').value;
+        if (!text.trim()) return;
+
+        const { inputTensor, display } = processText(text);
+        
+        // Visa tokens grafiskt
+        const tokenContainer = document.getElementById('tokenContainer');
+        tokenContainer.innerHTML = display.map(t => 
+            `<span class="token-badge">${t.word} (ID: ${t.id})</span>`
+        ).join('');
+
+        // Kör modellen (Predict)
+        const prediction = await model.predict(inputTensor).data();
+        
+        renderPredictions(prediction);
     }
-}
-// PREDICT
-async function predict() {
-    const text = document.getElementById("inputText").value.trim();
-    if (!text) return;
-    const { tokens, sequence, paddingCount } = preprocess(text);
-    renderTokens(tokens);
-    renderPadding(paddingCount);
-    const score = tf.tidy(() => {
-        const input = tf.tensor2d([sequence], [1, MAX_LEN], "int32");
-        return model.predict(input).dataSync()[0];
-    });
-    const label = score >= THRESHOLD ? "POSITIVE" : "NEGATIVE";
-    document.getElementById("label").textContent = label;
-    document.getElementById("label").className =
-        `result ${label === "POSITIVE" ? "positive" : "negative"}`;
-    document.getElementById("probability").innerText =
-        `Probability: ${(score * 100).toFixed(2)} %`;
-    document.getElementById("barFill").style.width =
-        `${(score * 100).toFixed(1)}%`;
-}
-// INIT
-window.addEventListener("DOMContentLoaded", loadAll);
+
+    // 4. Rendera staplar och resultat
+    function renderPredictions(probabilities) {
+        const resultsDiv = document.getElementById('results');
+        const predList = document.getElementById('predictionList');
+        const labels = metadata.labels; // ["negativ", "neutral", "positiv"]
+
+        resultsDiv.style.display = 'block';
+        predList.innerHTML = '';
+
+        labels.forEach((label, i) => {
+            const percentage = (probabilities[i] * 100).toFixed(2);
+            predList.innerHTML += `
+                <div class="prediction-row">
+                    <div class="label-text">
+                        <span>${label.toUpperCase()}</span>
+                        <span>${percentage}%</span>
+                    </div>
+                    <div class="bar-container">
+                        <div class="bar-fill" style="width: ${percentage}%"></div>
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    document.getElementById('analyzeBtn').addEventListener('click', runInference);
+    initialize();
 </script>
+
 </body>
 </html>

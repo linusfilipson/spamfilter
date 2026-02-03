@@ -141,8 +141,8 @@ async function loadAll() {
     const status = document.getElementById("status");
     try {
         status.innerText = "Loading model…";
-        model = await tf.loadLayersModel("/tfs_model/model.json");
-        const res = await fetch("/tfs_model/metadata.json");
+        model = await tf.loadLayersModel("/tfjs_model/model.json");
+        const res = await fetch("/tfjs_model/metadata.json");
         const tokenizer = await res.json();
         wordIndex = tokenizer.word_index;
         status.innerText = "Model loaded ✓";

@@ -1,110 +1,191 @@
 <!DOCTYPE html>
-<html lang="sv">
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Spam Check - Linus</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0"></script>
-    <style>
-        body { font-family: sans-serif; background: #121212; color: white; display: flex; justify-content: center; padding: 20px; }
-        .card { background: #1e1e1e; padding: 25px; border-radius: 12px; width: 100%; max-width: 500px; border: 1px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        h2 { color: #6366f1; margin-top: 0; }
-        textarea { width: 100%; height: 100px; margin: 15px 0; padding: 12px; box-sizing: border-box; background: #262626; color: #fff; border: 1px solid #444; border-radius: 8px; font-size: 16px; outline: none; }
-        textarea:focus { border-color: #6366f1; }
-        button { width: 100%; padding: 15px; background: #6366f1; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 16px; }
-        button:active { transform: scale(0.98); }
-        #status { font-size: 0.85rem; margin-bottom: 15px; padding: 12px; border-radius: 8px; background: #2c2c2c; font-family: monospace; }
-        .error { color: #ff6b6b; border: 1px solid #ff6b6b; }
-        .success { color: #51cf66; border: 1px solid #51cf66; }
-        #debugOutput { margin-top: 20px; padding: 15px; background: #1a1a1a; border-radius: 8px; border-left: 4px solid #6366f1; }
-    </style>
+<meta charset="UTF-8" />
+<title>Linus – TensorFlow.js Text Classifier</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0"></script>
+
+<style>
+  body {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    background: linear-gradient(135deg, #1e1e2f, #2a2a40);
+    color: #ffffff;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .card {
+    background: #12121c;
+    border-radius: 16px;
+    padding: 30px;
+    width: 100%;
+    max-width: 720px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+  }
+
+  h1 {
+    margin-top: 0;
+    text-align: center;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+
+  .input-section {
+    margin-top: 20px;
+  }
+
+  textarea {
+    width: 100%;
+    height: 120px;
+    background: #1f1f2e;
+    border: 1px solid #333;
+    border-radius: 10px;
+    color: #fff;
+    font-size: 16px;
+    padding: 12px;
+    resize: none;
+  }
+
+  textarea::placeholder {
+    color: #888;
+  }
+
+  button {
+    width: 100%;
+    margin-top: 15px;
+    padding: 14px;
+    font-size: 16px;
+    font-weight: 600;
+    background: linear-gradient(135deg, #6a5acd, #836fff);
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    color: #fff;
+  }
+
+  button:hover {
+    opacity: 0.9;
+  }
+
+  .output {
+    margin-top: 30px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+
+  .box {
+    background: #1a1a2a;
+    border-radius: 12px;
+    padding: 20px;
+  }
+
+  .box h2 {
+    margin-top: 0;
+    font-size: 18px;
+    border-bottom: 1px solid #333;
+    padding-bottom: 8px;
+  }
+
+  ul {
+    list-style: none;
+    padding-left: 0;
+    margin: 0;
+  }
+
+  li {
+    font-size: 14px;
+    padding: 4px 0;
+    border-bottom: 1px solid #2a2a3a;
+  }
+
+  @media (max-width: 700px) {
+    .output {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
 </head>
+
 <body>
 
 <div class="card">
-    <h2>Spam Checker AI</h2>
-    <div id="status">Väntar på systemet...</div>
-    <textarea id="textInput" placeholder="Skriv din engelska mening här..."></textarea>
-    <button id="predictBtn" onclick="predict()">ANALYSERA TEXT</button>
-    <div id="debugOutput">Resultatet visas här efter analys.</div>
+  <h1>Text Classification – Linus</h1>
+
+  <div class="input-section">
+    <textarea id="textInput" placeholder="Write an English sentence..."></textarea>
+    <button onclick="predict()">Analyze Text</button>
+  </div>
+
+  <div class="output">
+    <div class="box" id="result"></div>
+    <div class="box" id="tokens"></div>
+  </div>
 </div>
 
 <script>
-    let model, wordIndex;
-    const MAX_LEN = 20;
+let model;
+let wordIndex;
+const MAX_LEN = 30; // MÅSTE matcha modellen
 
-    async function init() {
-        const status = document.getElementById('status');
-        try {
-            status.innerHTML = "⏳ Laddar modell från /tfjs_model...";
-            
-            // Försök ladda modell.json
-            model = await tf.loadLayersModel('tfjs_model/model.json');
-            
-            // Försök ladda metadata.json
-            const response = await fetch('tfjs_model/metadata.json');
-            if (!response.ok) throw new Error("Kunde inte hitta metadata.json");
-            
-            const meta = await response.json();
-            wordIndex = meta.word_index;
+async function loadAll() {
+  model = await tf.loadLayersModel("tfjs_model/model.json");
 
-            status.innerHTML = "✅ SYSTEMET ÄR REDO!";
-            status.className = "success";
-        } catch (e) {
-            status.innerHTML = "❌ FEL: Kontrollera mappen 'tfjs_model'";
-            status.className = "error";
-            document.getElementById('debugOutput').innerHTML = "<strong>Tekniskt fel:</strong> " + e.message + 
-                "<br><br>Se till att du laddat upp mappen till GitHub korrekt.";
-        }
-    }
+  const metadata = await fetch("tfjs_model/metadata.json").then(r => r.json());
+  wordIndex = metadata.word_index || metadata.wordIndex;
 
-    function tokenize(text) {
-        if (!wordIndex) return new Array(MAX_LEN).fill(0);
-        // Rensa texten på samma sätt som vid träning
-        const words = text.toLowerCase().replace(/[^\w\s]/g, "").split(/\s+/).filter(x => x);
-        const tokens = words.map(w => wordIndex[w] || 1); // 1 = OOV
-        const padded = new Array(MAX_LEN).fill(0);
-        for (let i = 0; i < Math.min(tokens.length, MAX_LEN); i++) {
-            padded[i] = tokens[i];
-        }
-        return padded;
-    }
+  console.log("Model & metadata loaded");
+}
 
-    async function predict() {
-        const out = document.getElementById('debugOutput');
-        const input = document.getElementById('textInput').value;
+loadAll();
 
-        if (!model || !wordIndex) {
-            alert("Modellen är inte laddad än. Vänta på grönt ljus!");
-            return;
-        }
+function tokenize(text) {
+  const words = text
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, "")
+    .split(/\s+/)
+    .filter(w => w.length > 0);
 
-        if (!input.trim()) {
-            out.innerHTML = "Skriv in någon text först!";
-            return;
-        }
+  const tokens = words.map(w => wordIndex[w] || 0);
 
-        try {
-            const tokens = tokenize(input);
-            const tensor = tf.tensor2d([tokens], [1, MAX_LEN]);
-            const prediction = await model.predict(tensor).data();
-            
-            // Din modell har 3 outputs i sista lagret (dense_1)
-            const labels = ["Negativ/Spam", "Neutral", "Positiv/Ham"];
-            const maxIdx = prediction.indexOf(Math.max(...prediction));
-            const confidence = (prediction[maxIdx] * 100).toFixed(1);
-            
-            out.innerHTML = `<h3 style="margin:0; color:#6366f1;">RESULTAT: ${labels[maxIdx]}</h3>` + 
-                            `<p style="margin:10px 0 0 0;">Sannolikhet: <strong>${confidence}%</strong></p>`;
-            
-            tf.dispose(tensor);
-        } catch (e) {
-            out.innerHTML = "<span style='color:red'>LOGIKFEL:</span> " + e.message;
-        }
-    }
+  while (tokens.length < MAX_LEN) tokens.push(0);
+  tokens.length = MAX_LEN;
 
-    // Starta laddning när sidan öppnas
-    window.onload = init;
+  return { words, tokens };
+}
+
+async function predict() {
+  const text = document.getElementById("textInput").value;
+  if (!text) return;
+
+  const { words, tokens } = tokenize(text);
+
+  const inputTensor = tf.tensor2d([tokens], [1, MAX_LEN], "int32");
+  const output = model.predict(inputTensor);
+  const prob = (await output.data())[0];
+
+  const percent = (prob * 100).toFixed(2);
+  const label = prob >= 0.5 ? "Positive" : "Negative";
+
+  document.getElementById("result").innerHTML = `
+    <h2>Result</h2>
+    <p><b>Prediction:</b> ${label}</p>
+    <p><b>Probability:</b> ${percent}%</p>
+  `;
+
+  document.getElementById("tokens").innerHTML = `
+    <h2>Tokens</h2>
+    <ul>
+      ${words.map((w, i) => `<li>${w} → ${tokens[i]}</li>`).join("")}
+    </ul>
+  `;
+
+  tf.dispose([inputTensor, output]);
+}
 </script>
+
 </body>
 </html>

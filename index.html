@@ -15,8 +15,8 @@
         button:hover { background: #1557b0; }
         button:disabled { background: #ccc; cursor: not-allowed; }
         
-        #status { font-size: 0.9em; margin-bottom: 10px; color: #666; }
-        #results { margin-top: 30px; border-top: 1px solid #eee; pt: 20px; display: none; }
+        #status { font-size: 0.9em; margin-bottom: 10px; color: #666; font-weight: bold; }
+        #results { margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px; display: none; }
         
         .token-list { margin: 15px 0; display: flex; flex-wrap: wrap; gap: 8px; }
         .token-badge { background: #e8f0fe; color: #1967d2; padding: 5px 12px; border-radius: 20px; font-size: 14px; border: 1px solid #d2e3fc; }
@@ -24,7 +24,7 @@
         .prediction-row { margin-bottom: 15px; }
         .label-text { display: flex; justify-content: space-between; margin-bottom: 5px; font-weight: bold; }
         .bar-container { background: #eee; height: 12px; border-radius: 6px; overflow: hidden; }
-        .bar-fill { height: 100%; background: #1a73e8; border-radius: 6px; transition: width 0.6s cubic-bezier(0.1, 0, 0.2, 1); }
+        .bar-fill { height: 100%; background: #1a73e8; border-radius: 6px; transition: width 0.6s ease-out; }
     </style>
 </head>
 <body>
@@ -33,7 +33,7 @@
     <h1>Textanalysator</h1>
     <div id="status">Laddar AI-modell...</div>
     
-    <textarea id="textInput" placeholder="Skriv en mening här (t.ex. 'Filmen var helt fantastisk' eller engelska)..."></textarea>
+    <textarea id="textInput" placeholder="Skriv en mening här..."></textarea>
     <button id="analyzeBtn" disabled>Analysera Sentiment</button>
 
     <div id="results">
@@ -48,30 +48,33 @@
 <script>
     let model;
     let metadata;
-    const MAX_LENGTH = 20; // Hämtat från metadata.json
+    const MAX_LENGTH = 20; // Baserat på din modells input_length
 
     // 1. Initiera modellen och ordlistan
     async function initialize() {
         const statusEl = document.getElementById('status');
+        const btn = document.getElementById('analyzeBtn');
+        
         try {
-            // Laddar från din specifika mapp
+            // Laddar från din mapp tfjs_model
             model = await tf.loadLayersModel('tfjs_model/model.json');
+            
             const metaRes = await fetch('tfjs_model/metadata.json');
             metadata = await metaRes.json();
             
-            statusEl.innerText = "✅ Modell och ordlista laddad från /tfjs_model";
+            statusEl.innerText = "✅ Klar! Modellen och ordlistan är laddade.";
             statusEl.style.color = "green";
-            document.getElementById('analyzeBtn').disabled = false;
+            btn.disabled = false; // Aktiverar knappen när allt är klart
         } catch (err) {
-            statusEl.innerText = "❌ Fel: Kunde inte ladda filerna. Kontrollera mappen 'tfjs_model'.";
+            statusEl.innerText = "❌ Fel vid laddning: " + err.message;
             statusEl.style.color = "red";
-            console.error(err);
+            console.error("Laddningsfel:", err);
         }
     }
 
     // 2. Textbehandling (Tokenisering + Padding)
     function processText(text) {
-        // Rensa texten på specialtecken och gör till små bokstäver
+        // Rensa texten och skapa ordlista
         const cleanText = text.toLowerCase().replace(/[^\w\s\u00C0-\u017F]/g, '');
         const words = cleanText.split(/\s+/).filter(w => w.length > 0);
         
@@ -79,13 +82,13 @@
         const tokenDisplay = [];
 
         words.forEach(word => {
-            // Hitta ordets ID eller använd <OOV> (index 1)
+            // Använd ord-ID från metadata eller OOV-token (index 1)
             const index = metadata.word_index[word] || metadata.word_index[metadata.oov_token];
             sequence.push(index);
             tokenDisplay.push({word: word, id: index});
         });
 
-        // Skapa padding (fyll upp till 20 ord enligt modellens krav)
+        // Skapa padding (fyll upp till 20 ord)
         const paddedSequence = new Array(MAX_LENGTH).fill(0);
         for (let i = 0; i < Math.min(sequence.length, MAX_LENGTH); i++) {
             paddedSequence[i] = sequence[i];
@@ -104,19 +107,18 @@
 
         const { inputTensor, display } = processText(text);
         
-        // Visa tokens grafiskt
+        // Visa tokens
         const tokenContainer = document.getElementById('tokenContainer');
         tokenContainer.innerHTML = display.map(t => 
             `<span class="token-badge">${t.word} (ID: ${t.id})</span>`
         ).join('');
 
-        // Kör modellen (Predict)
+        // Kör prediktion genom modellen
         const prediction = await model.predict(inputTensor).data();
-        
         renderPredictions(prediction);
     }
 
-    // 4. Rendera staplar och resultat
+    // 4. Visa resultat grafiskt
     function renderPredictions(probabilities) {
         const resultsDiv = document.getElementById('results');
         const predList = document.getElementById('predictionList');
@@ -141,8 +143,9 @@
         });
     }
 
+    // Starta initiering
     document.getElementById('analyzeBtn').addEventListener('click', runInference);
-    initialize();
+    window.onload = initialize;
 </script>
 
 </body>
